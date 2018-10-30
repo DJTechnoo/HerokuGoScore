@@ -9,7 +9,7 @@ import(
 	"strconv"
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
-	//"encoding/json"
+	"encoding/json"
 
 )
 
@@ -22,6 +22,12 @@ const dbURL			= "mongodb://scoreuser:spillprog4life@ds145083.mlab.com:45083/high
 type scoreEntry struct {
 	ID bson.ObjectId 	`bson:"_id,omitempty" json:"-"`
 	Score int 			`bson:"score" json:"score"`
+}
+
+
+type scoreResponse struct {
+	HighScore int		`json:"high_score"`
+	OtherScores []int	`json:"other_scores"` 
 }
 
 
@@ -44,6 +50,42 @@ func addToDB(entry scoreEntry) {
 }
 
 
+func createResponse(w http.ResponseWriter, sortedScores []int){
+	response := scoreResponse{}				// 1 empty data
+	response.HighScore = sortedScores[0]	// take the highest score
+	response.OtherScores = sortedScores[1 : len(sortedScores)]	// add rest
+	
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "    ")
+	enc.Encode(&response)
+}
+
+
+func sortByScore(w http.ResponseWriter){
+	session, err := mgo.Dial(dbURL)
+	if err != nil {
+		panic(err)
+	}
+	defer session.Close()
+
+
+	c := session.DB(dbName).C(dbCollection)
+
+	item := scoreEntry{}
+
+	find := c.Find(nil).Sort("-score")
+
+	sortedScores := make([]int, 0)
+	items := find.Iter()
+	for items.Next(&item) {
+		sortedScores = append(sortedScores, item.Score)
+	}
+
+
+	createResponse(w, sortedScores)
+}
+
+
 //	handles the score
 func processScore(score int){
 	entry := scoreEntry{ID: bson.NewObjectId(), Score: score}	
@@ -56,7 +98,7 @@ func scoreHandler(w http.ResponseWriter, r * http.Request){
 
 	switch r.Method {
 	case http.MethodGet:
-		fmt.Fprintln(w, "scores come here")
+		sortByScore(w)
 		
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
