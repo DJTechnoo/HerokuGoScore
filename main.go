@@ -2,7 +2,7 @@ package main
 
 import(
 
-	"fmt"
+	//"fmt"
 	"net/http"
 	"os"
 	"log"
@@ -22,13 +22,11 @@ const dbURL			= "mongodb://scoreuser:spillprog4life@ds145083.mlab.com:45083/high
 type scoreEntry struct {
 	ID bson.ObjectId 	`bson:"_id,omitempty" json:"-"`
 	Score int 			`bson:"score" json:"score"`
+	Username string     `bson:"username" json:"username"`
 }
 
 
-type scoreResponse struct {
-	HighScore int		`json:"high_score"`
-	OtherScores []int	`json:"other_scores"` 
-}
+
 
 
 
@@ -50,15 +48,7 @@ func addToDB(entry scoreEntry) {
 }
 
 
-func createResponse(w http.ResponseWriter, sortedScores []int){
-	response := scoreResponse{}				// 1 empty data
-	response.HighScore = sortedScores[0]	// take the highest score
-	response.OtherScores = sortedScores[1 : len(sortedScores)]	// add rest
-	
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "    ")
-	enc.Encode(&response)
-}
+
 
 
 func sortByScore(w http.ResponseWriter){
@@ -71,27 +61,16 @@ func sortByScore(w http.ResponseWriter){
 
 	c := session.DB(dbName).C(dbCollection)
 
-	item := scoreEntry{}
+	sortedScores := []scoreEntry{}
 
-	find := c.Find(nil).Sort("-score")
+	c.Find(bson.M{}).Sort("-score").Limit(5).All(&sortedScores)
 
-	sortedScores := make([]int, 0)
-	items := find.Iter()
-	for items.Next(&item) {
-		sortedScores = append(sortedScores, item.Score)
-	}
-
-
-	createResponse(w, sortedScores)
+	http.Header.Add(w.Header(), "content-type", "application/json")
+	json.NewEncoder(w).Encode(&sortedScores)
+	
 }
 
 
-//	handles the score
-func processScore(score int){
-	entry := scoreEntry{ID: bson.NewObjectId(), Score: score}	
-						
-	addToDB(entry)
-}
 
 
 func scoreHandler(w http.ResponseWriter, r * http.Request){
@@ -106,8 +85,11 @@ func scoreHandler(w http.ResponseWriter, r * http.Request){
 		}
 
 		latestScore, _ := strconv.Atoi(r.FormValue("score"))
-		fmt.Fprintln(w, latestScore)
-		processScore(latestScore)
+		username   := r.FormValue("username")
+
+		s := scoreEntry{bson.NewObjectId(), latestScore, username}
+		
+		addToDB(s)
 	}
 }
 
